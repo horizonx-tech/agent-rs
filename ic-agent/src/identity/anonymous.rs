@@ -17,7 +17,7 @@ impl Identity for AnonymousIdentity {
         None
     }
 
-    async   fn sign(&self, _: &EnvelopeContent) -> Result<Signature, String> {
+    async fn sign(&self, _: &EnvelopeContent) -> Result<Signature, String> {
         Ok(Signature {
             signature: None,
             public_key: None,
@@ -25,7 +25,7 @@ impl Identity for AnonymousIdentity {
         })
     }
 
-      fn sign_arbitrary(&self, _: &[u8]) -> Result<Signature, String> {
+    fn sign_arbitrary(&self, _: &[u8]) -> Result<Signature, String> {
         Ok(Signature {
             public_key: None,
             signature: None,

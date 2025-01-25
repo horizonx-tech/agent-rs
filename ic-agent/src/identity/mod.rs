@@ -51,7 +51,7 @@ pub trait Identity: Send + Sync {
     /// Returns a sender, ie. the Principal ID that is used to sign a request.
     ///
     /// Only one sender can be used per request.
-     fn sender(&self) -> Result<Principal, String>;
+    fn sender(&self) -> Result<Principal, String>;
 
     /// Produce the public key commonly returned in [`Signature`].
     ///
@@ -61,14 +61,14 @@ pub trait Identity: Send + Sync {
     /// Sign a request ID derived from a content map.
     ///
     /// Implementors should call `content.to_request_id().signable()` for the actual bytes that need to be signed.
-async    fn sign(&self, content: &EnvelopeContent) -> Result<Signature, String>;
+    async fn sign(&self, content: &EnvelopeContent) -> Result<Signature, String>;
 
     /// Sign a delegation to let another key be used to authenticate [`sender`](Identity::sender).
     ///
     /// Not all `Identity` implementations support this operation, though all `ic-agent` implementations other than `AnonymousIdentity` do.
     ///
     /// Implementors should call `content.signable()` for the actual bytes that need to be signed.
-       fn sign_delegation(&self, content: &Delegation) -> Result<Signature, String> {
+    fn sign_delegation(&self, content: &Delegation) -> Result<Signature, String> {
         let _ = content; // silence unused warning
         Err(String::from("unsupported"))
     }
@@ -76,22 +76,21 @@ async    fn sign(&self, content: &EnvelopeContent) -> Result<Signature, String>;
     /// Sign arbitrary bytes.
     ///
     /// Not all `Identity` implementations support this operation, though all `ic-agent` implementations do.
-      fn sign_arbitrary(&self, content: &[u8]) -> Result<Signature, String> {
+    fn sign_arbitrary(&self, content: &[u8]) -> Result<Signature, String> {
         let _ = content; // silence unused warning
         Err(String::from("unsupported"))
     }
 
     /// A list of signed delegations connecting [`sender`](Identity::sender)
     /// to [`public_key`](Identity::public_key), and in that order.
-     fn delegation_chain(&self) -> Vec<SignedDelegation> {
+    fn delegation_chain(&self) -> Vec<SignedDelegation> {
         vec![]
     }
 }
 
-
 macro_rules! delegating_impl {
     ($implementor:ty, $name:ident => $self_expr:expr) => {
-        impl Identity for $implementor{
+        impl Identity for $implementor {
             fn sender(&$name) -> Result<Principal, String> {
                 $self_expr.sender()
             }

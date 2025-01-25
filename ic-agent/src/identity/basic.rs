@@ -118,7 +118,7 @@ impl KeyCompat {
 }
 #[async_trait]
 impl Identity for BasicIdentity {
-     fn sender(&self) -> Result<Principal, String> {
+    fn sender(&self) -> Result<Principal, String> {
         Ok(Principal::self_authenticating(&self.der_encoded_public_key))
     }
 
@@ -130,10 +130,11 @@ impl Identity for BasicIdentity {
         self.sign_arbitrary(&content.to_request_id().signable())
     }
 
-      fn sign_delegation(&self, content: &Delegation) -> Result<Signature, String> {
+    fn sign_delegation(&self, content: &Delegation) -> Result<Signature, String> {
         self.sign_arbitrary(&content.signable())
     }
- fn sign_arbitrary(&self, content: &[u8]) -> Result<Signature, String> {
+
+    fn sign_arbitrary(&self, content: &[u8]) -> Result<Signature, String> {
         let signature = self.private_key.sign(content);
         Ok(Signature {
             signature: Some(signature),

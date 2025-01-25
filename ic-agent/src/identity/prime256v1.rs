@@ -84,7 +84,7 @@ impl Identity for Prime256v1Identity {
         Some(self.der_encoded_public_key.as_ref().to_vec())
     }
 
-  async  fn sign(&self, content: &EnvelopeContent) -> Result<Signature, String> {
+    async fn sign(&self, content: &EnvelopeContent) -> Result<Signature, String> {
         self.sign_arbitrary(&content.to_request_id().signable())
     }
 
