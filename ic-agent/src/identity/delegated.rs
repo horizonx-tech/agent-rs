@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use candid::Principal;
 use der::{Decode, SliceReader};
 use ecdsa::signature::Verifier;
@@ -123,6 +124,7 @@ impl DelegatedIdentity {
     }
 }
 
+#[async_trait]
 impl Identity for DelegatedIdentity {
     fn sender(&self) -> Result<Principal, String> {
         Ok(Principal::self_authenticating(&self.from_key))
@@ -130,8 +132,8 @@ impl Identity for DelegatedIdentity {
     fn public_key(&self) -> Option<Vec<u8>> {
         Some(self.from_key.clone())
     }
-    fn sign(&self, content: &EnvelopeContent) -> Result<Signature, String> {
-        self.to.sign(content).map(|sig| self.chain_signature(sig))
+    async fn sign(&self, content: &EnvelopeContent) -> Result<Signature, String> {
+        self.to.sign(content).await.map(|sig| self.chain_signature(sig))
     }
     fn sign_delegation(&self, content: &Delegation) -> Result<Signature, String> {
         self.to

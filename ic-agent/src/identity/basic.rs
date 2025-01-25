@@ -3,6 +3,7 @@ use crate::{agent::EnvelopeContent, export::Principal, Identity, Signature};
 #[cfg(feature = "pem")]
 use crate::identity::error::PemError;
 
+use async_trait::async_trait;
 use ed25519_consensus::SigningKey;
 use simple_asn1::{
     oid, to_der,
@@ -115,9 +116,9 @@ impl KeyCompat {
         }
     }
 }
-
+#[async_trait]
 impl Identity for BasicIdentity {
-    fn sender(&self) -> Result<Principal, String> {
+     fn sender(&self) -> Result<Principal, String> {
         Ok(Principal::self_authenticating(&self.der_encoded_public_key))
     }
 
@@ -125,15 +126,14 @@ impl Identity for BasicIdentity {
         Some(self.der_encoded_public_key.clone())
     }
 
-    fn sign(&self, content: &EnvelopeContent) -> Result<Signature, String> {
+    async fn sign(&self, content: &EnvelopeContent) -> Result<Signature, String> {
         self.sign_arbitrary(&content.to_request_id().signable())
     }
 
-    fn sign_delegation(&self, content: &Delegation) -> Result<Signature, String> {
+      fn sign_delegation(&self, content: &Delegation) -> Result<Signature, String> {
         self.sign_arbitrary(&content.signable())
     }
-
-    fn sign_arbitrary(&self, content: &[u8]) -> Result<Signature, String> {
+ fn sign_arbitrary(&self, content: &[u8]) -> Result<Signature, String> {
         let signature = self.private_key.sign(content);
         Ok(Signature {
             signature: Some(signature),
