@@ -1,13 +1,6 @@
 //! A [`RouteProvider`] for dynamic generation of routing urls.
 use arc_swap::ArcSwapOption;
-use dynamic_routing::{
-    dynamic_route_provider::DynamicRouteProviderBuilder,
-    node::Node,
-    snapshot::{
-        latency_based_routing::LatencyRoutingSnapshot,
-        round_robin_routing::RoundRobinRoutingSnapshot,
-    },
-};
+use dynamic_routing::{dynamic_route_provider::DynamicRouteProviderBuilder, node::Node};
 use std::{
     future::Future,
     str::FromStr,
@@ -36,6 +29,25 @@ const ICP0_SUB_DOMAIN: &str = ".icp0.io";
 const ICP_API_SUB_DOMAIN: &str = ".icp-api.io";
 const LOCALHOST_SUB_DOMAIN: &str = ".localhost";
 
+/// Statistical info about routing urls.
+#[derive(Debug, PartialEq)]
+pub struct RoutesStats {
+    /// Total number of existing routes (both healthy and unhealthy).
+    pub total: usize,
+
+    /// Number of currently healthy routes, or None if health status information is unavailable.
+    /// A healthy route is one that is available and ready to receive traffic.
+    /// The specific criteria for what constitutes a "healthy" route is implementation dependent.
+    pub healthy: Option<usize>,
+}
+
+impl RoutesStats {
+    /// Creates an new instance of [`RoutesStats`].
+    pub fn new(total: usize, healthy: Option<usize>) -> Self {
+        Self { total, healthy }
+    }
+}
+
 /// A [`RouteProvider`] for dynamic generation of routing urls.
 pub trait RouteProvider: std::fmt::Debug + Send + Sync {
     /// Generates the next routing URL based on the internal routing logic.
@@ -51,6 +63,9 @@ pub trait RouteProvider: std::fmt::Debug + Send + Sync {
     /// appearing first. The returned vector can contain fewer than `n` URLs if
     /// fewer are available.
     fn n_ordered_routes(&self, n: usize) -> Result<Vec<Url>, AgentError>;
+
+    /// Returns statistics about the total number of existing routes and the number of healthy routes.
+    fn routes_stats(&self) -> RoutesStats;
 }
 
 /// A simple implementation of the [`RouteProvider`] which produces an even distribution of the urls from the input ones.
@@ -94,6 +109,10 @@ impl RouteProvider for RoundRobinRouteProvider {
 
         Ok(urls)
     }
+
+    fn routes_stats(&self) -> RoutesStats {
+        RoutesStats::new(self.routes.len(), None)
+    }
 }
 
 impl RoundRobinRouteProvider {
@@ -133,6 +152,9 @@ impl RouteProvider for Url {
     fn n_ordered_routes(&self, _: usize) -> Result<Vec<Url>, AgentError> {
         Ok(vec![self.route()?])
     }
+    fn routes_stats(&self) -> RoutesStats {
+        RoutesStats::new(1, None)
+    }
 }
 
 /// A [`RouteProvider`] that will attempt to discover new boundary nodes and cycle through them, optionally prioritizing those with low latency.
@@ -142,69 +164,36 @@ pub struct DynamicRouteProvider {
 }
 
 impl DynamicRouteProvider {
-    /// Create a new `DynamicRouter` from a list of seed domains and a routing strategy.
+    /// Create a new `DynamicRouter` from a list of seed domains using latency-based routing.
     pub async fn run_in_background(
         seed_domains: Vec<String>,
         client: Arc<dyn HttpService>,
-        strategy: DynamicRoutingStrategy,
     ) -> Result<Self, AgentError> {
         let seed_nodes: Result<Vec<_>, _> = seed_domains.into_iter().map(Node::new).collect();
-        let boxed = match strategy {
-            DynamicRoutingStrategy::ByLatency => Box::new(
-                DynamicRouteProviderBuilder::new(
-                    LatencyRoutingSnapshot::new(),
-                    seed_nodes?,
-                    client,
-                )
-                .build()
-                .await,
-            ) as Box<dyn RouteProvider>,
-            DynamicRoutingStrategy::RoundRobin => Box::new(
-                DynamicRouteProviderBuilder::new(
-                    RoundRobinRoutingSnapshot::new(),
-                    seed_nodes?,
-                    client,
-                )
-                .build()
-                .await,
-            ),
-        };
-        Ok(Self { inner: boxed })
+        let provider = DynamicRouteProviderBuilder::new(seed_nodes?, client).build();
+        provider.start().await;
+
+        Ok(Self {
+            inner: Box::new(provider),
+        })
     }
     /// Same as [`run_in_background`](Self::run_in_background), but with custom intervals for refreshing the routing list and health-checking nodes.
     pub async fn run_in_background_with_intervals(
         seed_domains: Vec<String>,
         client: Arc<dyn HttpService>,
-        strategy: DynamicRoutingStrategy,
         list_update_interval: Duration,
         health_check_interval: Duration,
     ) -> Result<Self, AgentError> {
         let seed_nodes: Result<Vec<_>, _> = seed_domains.into_iter().map(Node::new).collect();
-        let boxed = match strategy {
-            DynamicRoutingStrategy::ByLatency => Box::new(
-                DynamicRouteProviderBuilder::new(
-                    LatencyRoutingSnapshot::new(),
-                    seed_nodes?,
-                    client,
-                )
-                .with_fetch_period(list_update_interval)
-                .with_check_period(health_check_interval)
-                .build()
-                .await,
-            ) as Box<dyn RouteProvider>,
-            DynamicRoutingStrategy::RoundRobin => Box::new(
-                DynamicRouteProviderBuilder::new(
-                    RoundRobinRoutingSnapshot::new(),
-                    seed_nodes?,
-                    client,
-                )
-                .with_fetch_period(list_update_interval)
-                .with_check_period(health_check_interval)
-                .build()
-                .await,
-            ),
-        };
-        Ok(Self { inner: boxed })
+        let provider = DynamicRouteProviderBuilder::new(seed_nodes?, client)
+            .with_fetch_period(list_update_interval)
+            .with_check_period(health_check_interval)
+            .build();
+        provider.start().await;
+
+        Ok(Self {
+            inner: Box::new(provider),
+        })
     }
 }
 
@@ -215,15 +204,9 @@ impl RouteProvider for DynamicRouteProvider {
     fn n_ordered_routes(&self, n: usize) -> Result<Vec<Url>, AgentError> {
         self.inner.n_ordered_routes(n)
     }
-}
-
-/// Strategy for [`DynamicRouteProvider`]'s routing mechanism.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum DynamicRoutingStrategy {
-    /// Prefer nodes with low latency.
-    ByLatency,
-    /// Cycle through discovered nodes with no regard for latency.
-    RoundRobin,
+    fn routes_stats(&self) -> RoutesStats {
+        self.inner.routes_stats()
+    }
 }
 
 #[derive(Debug)]
@@ -269,6 +252,9 @@ impl<R: RouteProvider> RouteProvider for UrlUntilReady<R> {
         } else {
             self.url.route()
         }
+    }
+    fn routes_stats(&self) -> RoutesStats {
+        RoutesStats::new(1, None)
     }
 }
 

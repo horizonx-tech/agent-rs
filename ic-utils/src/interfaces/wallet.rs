@@ -450,13 +450,15 @@ impl<'agent> WalletCanister<'agent> {
         let version: Result<(String,), _> =
             canister.query("wallet_api_version").build().call().await;
         let version = match version {
-            Err(AgentError::UncertifiedReject(replica_error))
-                if replica_error
+            Err(AgentError::UncertifiedReject {
+                reject: replica_error,
+                ..
+            }) if replica_error
+                .reject_message
+                .contains(REPLICA_ERROR_NO_SUCH_QUERY_METHOD)
+                || replica_error
                     .reject_message
-                    .contains(REPLICA_ERROR_NO_SUCH_QUERY_METHOD)
-                    || replica_error
-                        .reject_message
-                        .contains(IC_REF_ERROR_NO_SUCH_QUERY_METHOD) =>
+                    .contains(IC_REF_ERROR_NO_SUCH_QUERY_METHOD) =>
             {
                 DEFAULT_VERSION.clone()
             }
@@ -675,6 +677,7 @@ impl<'agent> WalletCanister<'agent> {
             wasm_memory_limit: None,
             wasm_memory_threshold: None,
             log_visibility: None,
+            environment_variables: None,
         };
 
         self.update("wallet_create_canister")
@@ -707,6 +710,7 @@ impl<'agent> WalletCanister<'agent> {
             wasm_memory_limit: None,
             wasm_memory_threshold: None,
             log_visibility: None,
+            environment_variables: None,
         };
 
         self.update("wallet_create_canister128")
@@ -837,6 +841,7 @@ impl<'agent> WalletCanister<'agent> {
             wasm_memory_limit: None,
             wasm_memory_threshold: None,
             log_visibility: None,
+            environment_variables: None,
         };
 
         self.update("wallet_create_wallet")
@@ -869,6 +874,7 @@ impl<'agent> WalletCanister<'agent> {
             wasm_memory_limit: None,
             wasm_memory_threshold: None,
             log_visibility: None,
+            environment_variables: None,
         };
 
         self.update("wallet_create_wallet128")
